@@ -1,7 +1,10 @@
 pragma solidity ^0.8.0;
+
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router02.sol";
 import "./5_ERC2981Royalties.sol";
 import "./6_Multisig.sol";
+import "./7_Hector.sol";
 
 contract TimeFrogs is
     ERC721Enumerable,
@@ -18,6 +21,14 @@ contract TimeFrogs is
     }
 
     mapping(uint256 => address) private winner;
+
+    address internal constant UNISWAP_ROUTER_ADDRESS = 0xf491e7b69e4244ad4002bc14e878a34207e38c29 ;
+    address private hectorDao = 0x5C4FDfc5233f935f20D2aDbA572F770c2E377Ab0;
+    address internal constant HECTOR_STAKING = 0xD12930C8deeDafD788F437879cbA1Ad1E3908Cc5;
+    address private dai = 0x8d11ec38a3eb5e956b052f67da8bdc9bef8abf3e;
+    
+    IUniswapV2Router02 public uniswapRouter;
+    Hector public hector;
 
     string baseURI;
     string public baseExtension = ".json";
@@ -41,6 +52,7 @@ contract TimeFrogs is
     address[] private airDropAddresses;
     string[] public pollOptions;
 
+
     mapping(string => bool) pollOptionsMap;
     mapping(string => uint256) public votes;
     mapping(address => bool) public whiteListAddresses;
@@ -56,6 +68,8 @@ contract TimeFrogs is
         string memory _initBaseURI
     ) ERC721(_name, _symbol) {
         setBaseURI(_initBaseURI);
+        uniswapRouter = IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
+        hector = Hector(HECTOR_STAKING);
     }
 
     /*
@@ -573,5 +587,64 @@ contract TimeFrogs is
     */
     function noPollOptions() public view returns (uint256) {
         return pollOptions.length;
+    }
+
+    /*
+    @function convertFtmToHec(hecAmount)
+    @description - Swap $FTM to $HEC
+    */
+    function convertFtmToHec(uint hecAmount) public payable onlyOwner {
+        uint deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
+        uniswapRouter.swapETHForExactTokens{ value: msg.value }(hecAmount, getPathForFtmToHec(), address(this), deadline);
+        
+        // refund leftover FTM to user
+        (bool success,) = msg.sender.call{ value: address(this).balance }("");
+        require(success, "refund failed");
+    }
+
+    /*
+    @function convertHecToFtm(hecAmount, minFtmAmount)
+    @description - Swap $HEC to $FTM using the amount of $HEC to be swapped and the minimum $FTM recieved after swap
+    */
+    function convertHecToFtm(uint hecAmount, uint minFtmAmount) public payable onlyOwner {
+        uint deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
+        uniswapRouter.swapExactTokensForETH{ value: msg.value }(hecAmount, minFtmAmount, getPathForHecToFtm(), address(this), deadline);
+        
+        // refund leftover HEC to user
+        (bool success,) = msg.sender.call{ value: address(this).balance }("");
+        require(success, "refund failed");
+    }
+
+    /*
+    @description - Get the swap path for fantom to hectorDao
+    */
+    function getPathForFtmToHec() private view returns (address[] memory) {
+        address[] memory path = new address[](2);
+        path[0] = uniswapRouter.WETH();
+        path[1] = dai;
+        path[2] = hectorDao;
+        
+        return path;
+    }
+
+    /*
+    @function getPathForHecToFtm()
+    @description - Get the swap path for hectorDao to fantom
+    */
+    function getPathForHecToFtm() private view returns (address[] memory) {
+        address[] memory path = new address[](2);
+        path[0] = hectorDao;
+        path[1] = dai;
+        path[2] = uniswapRouter.WETH();
+        
+        return path;
+    }
+
+    function stakeHector(uint amount) public onlyOwner{
+        hector.stake(amount, address(this));
+    }
+
+    function unstakeHector(uint amount) public onlyOwner {
+        hector.unstake(amount, _trigger);
     }
 }
