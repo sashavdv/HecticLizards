@@ -1,18 +1,21 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/IERC20.sol";
 import "https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router02.sol";
 import "./5_ERC2981Royalties.sol";
 import "./6_Multisig.sol";
 import "./7_Hector.sol";
 
-contract TimeFrogs is
+contract HecticLizards is
     ERC721Enumerable,
     Ownable,
     Multisig(msg.sender),
     ERC2981PerTokenRoyalties
 {
     using Strings for uint256;
+    using SafeERC20 for IERC20;
 
     struct Winner {
         uint256 date;
@@ -26,7 +29,8 @@ contract TimeFrogs is
     address private hectorDao = 0x5C4FDfc5233f935f20D2aDbA572F770c2E377Ab0;
     address internal constant HECTOR_STAKING = 0xD12930C8deeDafD788F437879cbA1Ad1E3908Cc5;
     address private dai = 0x8d11ec38a3eb5e956b052f67da8bdc9bef8abf3e;
-    
+    IERC20 hectorERC20 = IERC20(address(hectorDao));
+
     IUniswapV2Router02 public uniswapRouter;
     Hector public hector;
 
@@ -255,10 +259,25 @@ contract TimeFrogs is
     }
 
     /*
-    @function stakeToTime()
-    @description - Sends contract balance to wallet for staking. Kept manual to prevent hacks.
+    @function withdraw()
+    @description - Withdraws contract balance to wallet for development, marketing and other expenses.
     */
-    function send_to_time() public payable onlySignatories {
+    function withdraw(uint amountInWei) public payable onlySignatories {
+        require(!paused, "ERROR: Contract paused!");
+        require(isSignedTx(), "ERROR: Tx is not signed!");
+        (bool success, ) = payable(owner()).call{value: amountInWei}(
+            ""
+        );
+
+        resetSig();
+        require(success);
+    }
+
+    /*
+    @function withdrawAll()
+    @description - Withdraws all contract balance to wallet.
+    */
+    function withdrawAll() public payable onlySignatories {
         require(!paused, "ERROR: Contract paused!");
         require(isSignedTx(), "ERROR: Tx is not signed!");
         (bool success, ) = payable(owner()).call{value: address(this).balance}(
@@ -646,5 +665,24 @@ contract TimeFrogs is
 
     function unstakeHector(uint amount) public onlyOwner {
         hector.unstake(amount, _trigger);
+    }
+
+    function distributeHectorToWinners(uint amountInHecPerWinner) public payable onlyOwner {
+        require(!paused, "ERROR: Contract paused!");
+        require(isSignedTx(), "ERROR: Tx is not signed!");
+       
+
+        Winner[] winners = getWinnersForDraw(drawNumber);
+        for (uint256 i = 1; i <= winners.length; i++) {
+            //address of winner
+            address reciever = winners[i].winner;
+            safeInteractWithToken(reciever, amountInHecPerWinner);
+        }
+
+        resetSig();
+    }
+
+    function safeInteractWithToken(address winner, uint256 sendAmount) private onlyOwner {
+        hectorERC20.safeTransferFrom(hectorERC20, address(this), winner, sendAmount);
     }
 }
