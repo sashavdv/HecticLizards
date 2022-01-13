@@ -674,15 +674,12 @@ contract HecticLizards is
 
         Winner[] winners = getWinnersForDraw(drawNumber);
         for (uint256 i = 1; i <= winners.length; i++) {
-            //address of winner
             address reciever = winners[i].winner;
-            safeInteractWithToken(reciever, amountInHecPerWinner);
+            hectorERC20.safeTransferFrom(address(this), reciever, amountInHecPerWinner);
+
         }
 
         resetSig();
     }
 
-    function safeInteractWithToken(address winner, uint256 sendAmount) private onlyOwner {
-        hectorERC20.safeTransferFrom(hectorERC20, address(this), winner, sendAmount);
-    }
 }
