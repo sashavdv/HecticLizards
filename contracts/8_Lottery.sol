@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/IERC20.sol";
 import "https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router02.sol";
 import "./5_ERC2981Royalties.sol";
 import "./6_Multisig.sol";
@@ -25,10 +26,10 @@ contract HecticLizards is
 
     mapping(uint256 => address) private winner;
 
-    address internal constant UNISWAP_ROUTER_ADDRESS = 0xf491e7b69e4244ad4002bc14e878a34207e38c29 ;
+    address internal constant UNISWAP_ROUTER_ADDRESS = 0xF491e7B69E4244ad4002BC14e878a34207E38c29 ;
     address private hectorDao = 0x5C4FDfc5233f935f20D2aDbA572F770c2E377Ab0;
     address internal constant HECTOR_STAKING = 0xD12930C8deeDafD788F437879cbA1Ad1E3908Cc5;
-    address private dai = 0x8d11ec38a3eb5e956b052f67da8bdc9bef8abf3e;
+    address private dai = 0x8D11eC38a3EB5E956B052f67Da8Bdc9bef8Abf3E;
     IERC20 hectorERC20 = IERC20(address(hectorDao));
 
     IUniswapV2Router02 public uniswapRouter;
@@ -107,7 +108,7 @@ contract HecticLizards is
 
         require(
             ownerCanMintCount >= _mintAmount,
-            "ERROR: You cant mint that many frogs"
+            "ERROR: You cant mint that many lizards"
         );
         require(!paused, "ERROR: Contract paused. Please check discord.");
         require(
@@ -116,13 +117,13 @@ contract HecticLizards is
         );
         require(
             supply + _mintAmount <= maxSupply,
-            "ERROR: Not enough Frogs left to mint!"
+            "ERROR: Not enough lizards left to mint!"
         );
 
         if (!whiteListAddresses[msg.sender]) {
             require(
                 msg.value >= cost * _mintAmount,
-                "ERROR: Please send more AVAX"
+                "ERROR: Please send more Fantom"
             );
         }
 
@@ -612,9 +613,10 @@ contract HecticLizards is
     @function convertFtmToHec(hecAmount)
     @description - Swap $FTM to $HEC
     */
-    function convertFtmToHec(uint hecAmount) public payable onlyOwner {
-        uint deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
-        uniswapRouter.swapETHForExactTokens{ value: msg.value }(hecAmount, getPathForFtmToHec(), address(this), deadline);
+    function convertFtmToHec(uint ftmAmount) public payable onlyOwner {
+        uint deadline = block.timestamp + 15; 
+        uint[] memory minHecAmount = uniswapRouter.getAmountsOut(ftmAmount, getPathForFtmToHec());
+        uniswapRouter.swapExactTokensForETH(ftmAmount, minHecAmount[1], getPathForFtmToHec(), address(this), deadline);
         
         // refund leftover FTM to user
         (bool success,) = msg.sender.call{ value: address(this).balance }("");
@@ -625,9 +627,12 @@ contract HecticLizards is
     @function convertHecToFtm(hecAmount, minFtmAmount)
     @description - Swap $HEC to $FTM using the amount of $HEC to be swapped and the minimum $FTM recieved after swap
     */
-    function convertHecToFtm(uint hecAmount, uint minFtmAmount) public payable onlyOwner {
-        uint deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
-        uniswapRouter.swapExactTokensForETH{ value: msg.value }(hecAmount, minFtmAmount, getPathForHecToFtm(), address(this), deadline);
+    function convertHecToFtm(uint hecAmount) public payable onlyOwner {
+        uint deadline = block.timestamp + 15; 
+        uint[] memory minFtmAmount = uniswapRouter.getAmountsOut(hecAmount, getPathForHecToFtm());
+        
+        require(IERC20(hectorDao).approve(address(UNISWAP_ROUTER_ADDRESS), hecAmount), 'approve failed.');
+        uniswapRouter.swapExactTokensForETH(hecAmount, minFtmAmount[1], getPathForHecToFtm(), address(this), deadline);
         
         // refund leftover HEC to user
         (bool success,) = msg.sender.call{ value: address(this).balance }("");
@@ -637,8 +642,8 @@ contract HecticLizards is
     /*
     @description - Get the swap path for fantom to hectorDao
     */
-    function getPathForFtmToHec() private view returns (address[] memory) {
-        address[] memory path = new address[](2);
+    function getPathForFtmToHec() public view returns (address[] memory) {
+        address[] memory path = new address[](3);
         path[0] = uniswapRouter.WETH();
         path[1] = dai;
         path[2] = hectorDao;
@@ -650,8 +655,8 @@ contract HecticLizards is
     @function getPathForHecToFtm()
     @description - Get the swap path for hectorDao to fantom
     */
-    function getPathForHecToFtm() private view returns (address[] memory) {
-        address[] memory path = new address[](2);
+    function getPathForHecToFtm() public view returns (address[] memory) {
+        address[] memory path = new address[](3);
         path[0] = hectorDao;
         path[1] = dai;
         path[2] = uniswapRouter.WETH();
@@ -660,11 +665,13 @@ contract HecticLizards is
     }
 
     function stakeHector(uint amount) public onlyOwner{
+        require(!paused, "ERROR: Contract paused!");
         hector.stake(amount, address(this));
     }
 
-    function unstakeHector(uint amount) public onlyOwner {
-        hector.unstake(amount, _trigger);
+    function unstakeHector(uint amount, bool trigger) public onlyOwner {
+        require(!paused, "ERROR: Contract paused!");
+        hector.unstake(amount, trigger);
     }
 
     function distributeHectorToWinners(uint amountInHecPerWinner) public payable onlyOwner {
@@ -672,14 +679,14 @@ contract HecticLizards is
         require(isSignedTx(), "ERROR: Tx is not signed!");
        
 
-        Winner[] winners = getWinnersForDraw(drawNumber);
+        Winner[] memory winners = getWinnersForDraw(drawNumber);
         for (uint256 i = 1; i <= winners.length; i++) {
             address reciever = winners[i].winner;
             hectorERC20.safeTransferFrom(address(this), reciever, amountInHecPerWinner);
-
         }
 
         resetSig();
     }
 
+    receive() payable external {}
 }
